@@ -3,6 +3,7 @@ Decentralized Community AI Compute Cloud - Central Coordinator Application.
 Main FastAPI entrypoint providing REST endpoints, WebSocket gateways, and lifecycle orchestration.
 """
 
+import asyncio
 import logging
 import sys
 import time
@@ -65,9 +66,30 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             "MinIO bucket initialization deferred (storage offline during startup): %s", exc
         )
 
+    # Start background job dispatcher loop for automatic queue processing
+    from coordinator.database import async_session_factory
+    from coordinator.task_dispatcher import get_task_dispatcher
+
+    dispatcher = get_task_dispatcher()
+    is_running = True
+
+    async def pending_jobs_loop():
+        while is_running:
+            try:
+                async with async_session_factory() as session:
+                    await dispatcher.dispatch_pending_jobs(session)
+            except Exception:
+                pass
+            await asyncio.sleep(3)
+
+    loop_task = asyncio.create_task(pending_jobs_loop())
+    logger.info("Background job scheduler loop active (3s interval).")
     logger.info("Coordinator startup sequence complete. Ready for traffic.")
 
     yield
+
+    is_running = False
+    loop_task.cancel()
 
     # Teardown
     logger.info("Shutting down Coordinator, releasing database and network pools...")

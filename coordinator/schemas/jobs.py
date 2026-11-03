@@ -25,7 +25,7 @@ class SubmitInferenceTextRequest(BaseModel):
     top_p: float = Field(default=0.9, ge=0.0, le=1.0)
     stream: bool = Field(default=False, description="Whether to stream response tokens via SSE")
     stop_sequences: list[str] = Field(default_factory=list)
-    min_vram_mb: int = Field(default=16384, ge=4096, description="Required GPU VRAM")
+    min_vram_mb: int = Field(default=8192, ge=2048, description="Required GPU VRAM")
 
 
 class SubmitInferenceImageRequest(BaseModel):
@@ -40,7 +40,7 @@ class SubmitInferenceImageRequest(BaseModel):
     num_inference_steps: int = Field(default=30, ge=1, le=100)
     guidance_scale: float = Field(default=7.5, ge=1.0, le=20.0)
     seed: int | None = None
-    min_vram_mb: int = Field(default=12288, ge=6144)
+    min_vram_mb: int = Field(default=8192, ge=4096)
 
 
 class SubmitTrainingLoraRequest(BaseModel):
@@ -57,7 +57,7 @@ class SubmitTrainingLoraRequest(BaseModel):
     epochs: int = Field(default=3, ge=1, le=20)
     learning_rate: float = Field(default=2e-4, gt=0.0, lt=1e-1)
     batch_size: int = Field(default=4, ge=1, le=64)
-    min_vram_mb: int = Field(default=24576, ge=8192)
+    min_vram_mb: int = Field(default=12288, ge=4096)
 
 
 class JobEventResponse(BaseModel):

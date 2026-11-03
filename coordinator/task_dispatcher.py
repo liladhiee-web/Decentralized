@@ -189,6 +189,20 @@ class TaskDispatcher:
         logger.info("Successfully dispatched job %s to worker %s", job.id, decision.worker_name)
         return True
 
+    async def dispatch_pending_jobs(self, db: AsyncSession) -> int:
+        """Scan and dispatch any pending jobs in priority order."""
+        result = await db.execute(
+            select(Job.id)
+            .where(Job.status == JobStatus.PENDING.value)
+            .order_by(Job.priority.desc(), Job.created_at.asc())
+        )
+        pending_ids = result.scalars().all()
+        dispatched_count = 0
+        for jid in pending_ids:
+            if await self.dispatch_job(jid, db):
+                dispatched_count += 1
+        return dispatched_count
+
     async def cancel_job(
         self, job_id: UUID, db: AsyncSession, reason: str = "User requested cancellation"
     ) -> bool:

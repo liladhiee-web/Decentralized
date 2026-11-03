@@ -19,40 +19,59 @@ export default function InferencePage() {
     setJobId(null);
 
     try {
-      if (mode === "text") {
-        const res = await fetch("/api/v1/jobs/inference/text", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            prompt,
-            max_tokens: maxTokens,
-            temperature,
-            model_name: "meta-llama/Llama-3-8B-Instruct",
-          }),
-        });
-        const data = await res.json();
-        if (res.ok) {
-          setJobId(data.id);
-          setOutput(`Job dispatched to community worker (ID: ${data.id}).\nStatus: ${data.status.toUpperCase()}\n\nExecution initiated. Monitoring outputs...`);
-        } else {
-          setOutput(`Error: ${JSON.stringify(data)}`);
-        }
+      const endpoint = mode === "text" ? "/api/v1/jobs/inference/text" : "/api/v1/jobs/inference/image";
+      const payload = mode === "text" ? {
+        prompt,
+        max_tokens: maxTokens,
+        temperature,
+        model_name: "meta-llama/Llama-3-8B-Instruct",
+        min_vram_mb: 8192,
+      } : {
+        prompt,
+        num_inference_steps: 30,
+        min_vram_mb: 8192,
+      };
+
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        const submittedId = data.id;
+        setJobId(submittedId);
+        setOutput(`Job submitted to platform (ID: ${submittedId}).\nStatus: ${data.status.toUpperCase()}\n\nScheduling on community GPU worker...`);
+
+        // Poll job status every 1.5 seconds
+        const pollInterval = setInterval(async () => {
+          try {
+            const statusRes = await fetch(`/api/v1/jobs/${submittedId}`);
+            if (statusRes.ok) {
+              const jobDetail = await statusRes.json();
+              const currentStatus = (jobDetail.status || "").toUpperCase();
+              let logText = `Job ID: ${jobDetail.id}\nStatus: ${currentStatus}\nType: ${jobDetail.type}\n`;
+              if (jobDetail.assigned_worker_id) {
+                logText += `Worker Node: ${jobDetail.assigned_worker_id}\n`;
+              }
+              if (jobDetail.events && jobDetail.events.length > 0) {
+                logText += `\nAudit Trail:\n` + jobDetail.events.map((ev: any) => ` • [${ev.event_type}] ${JSON.stringify(ev.details || {})}`).join("\n");
+              }
+              if (jobDetail.status === "completed") {
+                logText += `\n\n🎉 Job completed successfully! Output artifact recorded.`;
+                clearInterval(pollInterval);
+              } else if (jobDetail.status === "failed") {
+                logText += `\n\n❌ Job failed: ${jobDetail.error_message || "Unknown error"}`;
+                clearInterval(pollInterval);
+              }
+              setOutput(logText);
+            }
+          } catch {
+            // ignore network polling blips
+          }
+        }, 1500);
       } else {
-        const res = await fetch("/api/v1/jobs/inference/image", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            prompt,
-            num_inference_steps: 30,
-          }),
-        });
-        const data = await res.json();
-        if (res.ok) {
-          setJobId(data.id);
-          setOutput(`Image synthesis job dispatched (ID: ${data.id}).\nStatus: ${data.status.toUpperCase()}\nRendering steps in progress...`);
-        } else {
-          setOutput(`Error: ${JSON.stringify(data)}`);
-        }
+        setOutput(`Error: ${JSON.stringify(data)}`);
       }
     } catch (e: any) {
       setOutput(`Network error: ${e.message}`);

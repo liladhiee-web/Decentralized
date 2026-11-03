@@ -190,6 +190,16 @@ class WorkerConnectionManager:
             authenticated_worker_id = auth_msg.worker_id
             await self.register_connection(authenticated_worker_id, websocket)
 
+            # Check and dispatch any queued pending jobs to this newly registered worker
+            try:
+                from coordinator.task_dispatcher import get_task_dispatcher
+
+                dispatcher = get_task_dispatcher()
+                async with get_db_context() as db_disp:
+                    await dispatcher.dispatch_pending_jobs(db_disp)
+            except Exception as e:
+                logger.warning("Error dispatching pending jobs upon worker connect: %s", e)
+
             # Send Auth Ack
             ack_msg = WorkerAuthAckMessage(
                 success=True,

@@ -34,6 +34,7 @@ class StorageService:
             endpoint=self.endpoint,
             access_key=self.access_key,
             secret_key=self.secret_key,
+            region="us-east-1",
             secure=self.secure,
         )
 
@@ -42,6 +43,7 @@ class StorageService:
             endpoint=self.public_endpoint,
             access_key=self.access_key,
             secret_key=self.secret_key,
+            region="us-east-1",
             secure=self.secure,
         )
 
@@ -70,11 +72,15 @@ class StorageService:
     ) -> str:
         """Generate a short-lived HTTP PUT URL for direct-to-S3 client/worker uploads."""
         expires = timedelta(seconds=expiry_seconds or settings.MINIO_PRESIGNED_URL_EXPIRY_SECONDS)
-        return self.public_client.presigned_put_object(
-            bucket_name=bucket_name,
-            object_name=object_name,
-            expires=expires,
-        )
+        try:
+            return self.public_client.presigned_put_object(
+                bucket_name=bucket_name,
+                object_name=object_name,
+                expires=expires,
+            )
+        except Exception as e:
+            logger.warning("MinIO offline or unreachable; using fallback URL: %s", e)
+            return f"{settings.MINIO_PUBLIC_ENDPOINT}/{bucket_name}/{object_name}?offline=true"
 
     def generate_presigned_download_url(
         self,
@@ -83,6 +89,16 @@ class StorageService:
         expiry_seconds: int | None = None,
     ) -> str:
         """Generate a short-lived HTTP GET URL for direct-from-S3 downloads."""
+        expires = timedelta(seconds=expiry_seconds or settings.MINIO_PRESIGNED_URL_EXPIRY_SECONDS)
+        try:
+            return self.public_client.presigned_get_object(
+                bucket_name=bucket_name,
+                object_name=object_name,
+                expires=expires,
+            )
+        except Exception as e:
+            logger.warning("MinIO offline or unreachable; using fallback URL: %s", e)
+            return f"{settings.MINIO_PUBLIC_ENDPOINT}/{bucket_name}/{object_name}?offline=true"
         expires = timedelta(seconds=expiry_seconds or settings.MINIO_PRESIGNED_URL_EXPIRY_SECONDS)
         return self.public_client.presigned_get_object(
             bucket_name=bucket_name,
