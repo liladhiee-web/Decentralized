@@ -420,6 +420,16 @@ class WorkerConnectionManager:
             {"type": "completed", "job_id": str(comp.result.job_id)},
         )
 
+        # Dispatch any queued pending jobs to the newly freed worker
+        try:
+            from coordinator.task_dispatcher import get_task_dispatcher
+
+            dispatcher = get_task_dispatcher()
+            async with get_db_context() as db_disp:
+                await dispatcher.dispatch_pending_jobs(db_disp)
+        except Exception as e:
+            logger.warning("Error dispatching pending jobs upon task completion: %s", e)
+
     async def _process_task_failed(self, fail: TaskFailedMessage, worker_id: UUID) -> None:
         """Handle task failure reported by worker."""
         async with get_db_context() as db:
@@ -450,6 +460,16 @@ class WorkerConnectionManager:
             fail.job_id,
             {"type": "failed", "job_id": str(fail.job_id), "error": fail.error_message},
         )
+
+        # Dispatch any queued pending jobs to the newly freed worker
+        try:
+            from coordinator.task_dispatcher import get_task_dispatcher
+
+            dispatcher = get_task_dispatcher()
+            async with get_db_context() as db_disp:
+                await dispatcher.dispatch_pending_jobs(db_disp)
+        except Exception as e:
+            logger.warning("Error dispatching pending jobs upon task failure: %s", e)
 
 
 # Singleton instance of manager

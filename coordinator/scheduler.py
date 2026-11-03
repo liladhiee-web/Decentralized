@@ -80,12 +80,15 @@ class GPUScheduler:
         # 4. Thermal headroom (penalize GPUs running above 80°C)
         temp_ratio = 1.0 - min(1.0, max(0.0, gpu.temperature_celsius / 100.0))
 
+        # 5. Strong preference for completely free (IDLE) nodes over busy ones
+        status_bonus = 50.0 if worker.status == WorkerStatus.IDLE.value else 0.0
+
         # Composite weighted sum
         score = (
             (0.35 * vram_ratio) + (0.30 * util_ratio) + (0.25 * reliability) + (0.10 * temp_ratio)
-        )
+        ) * 100.0 + status_bonus
 
-        return round(score * 100.0, 2)
+        return round(score, 2)
 
     async def select_worker_for_inference(
         self,
@@ -119,10 +122,19 @@ class GPUScheduler:
         result = await db.execute(query)
         candidates = result.scalars().all()
 
+        # Always prioritize free/idle workers over busy ones.
+        # Single-GPU nodes currently in a work job are excluded if a free node is ready.
+        idle_candidates = [w for w in candidates if w.status == WorkerStatus.IDLE.value]
+        candidate_pool = (
+            idle_candidates
+            if idle_candidates
+            else [w for w in candidates if len(w.gpu_devices) > 1]
+        )
+
         best_decision: SchedulingDecision | None = None
         highest_score = -1.0
 
-        for worker in candidates:
+        for worker in candidate_pool:
             for gpu in worker.gpu_devices:
                 if not gpu.is_available:
                     continue
