@@ -33,6 +33,10 @@ class WorkerSettings(BaseSettings):
     WORK_DIR: Path = Field(default=Path("./workload_tmp"))
     HEARTBEAT_INTERVAL_SECONDS: int = Field(default=15)
     MAX_RECONNECT_DELAY_SECONDS: int = Field(default=60)
+    PURGE_MODEL_AFTER_TASK: bool = Field(
+        default=True,
+        description="Completely delete model weights from GPU VRAM and local disk cache after each task",
+    )
 
     # Docker Sandboxing
     DOCKER_IMAGE: str = Field(default="nvidia/cuda:12.4.1-runtime-ubuntu22.04")

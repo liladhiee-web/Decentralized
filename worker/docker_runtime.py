@@ -7,6 +7,8 @@ network isolation, resource quotas, and NVIDIA GPU passthrough.
 import asyncio
 import json
 import logging
+import os
+import shutil
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -23,6 +25,90 @@ logger = logging.getLogger(__name__)
 _CACHED_MODEL = None
 _CACHED_TOKENIZER = None
 _CACHED_MODEL_NAME = None
+
+
+def purge_model_and_vram(model_name: str | None = None, purge_disk: bool = True) -> None:
+    """Completely unloads neural network models from GPU VRAM, collects garbage,
+    and removes downloaded model weight directories from local disk.
+    """
+    global _CACHED_MODEL, _CACHED_TOKENIZER, _CACHED_MODEL_NAME
+
+    # 1. Unload model & tokenizer objects from memory
+    if _CACHED_MODEL is not None:
+        try:
+            del _CACHED_MODEL
+        except Exception:
+            pass
+        _CACHED_MODEL = None
+
+    if _CACHED_TOKENIZER is not None:
+        try:
+            del _CACHED_TOKENIZER
+        except Exception:
+            pass
+        _CACHED_TOKENIZER = None
+
+    _CACHED_MODEL_NAME = None
+
+    # 2. Force garbage collection and release all CUDA VRAM
+    import gc
+
+    gc.collect()
+
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
+            try:
+                torch.cuda.reset_peak_memory_stats()
+            except Exception:
+                pass
+            logger.info("[cleanup] Cleared CUDA cache & released GPU VRAM to 0 MB")
+    except Exception as e:
+        logger.debug("[cleanup] CUDA memory clearing notice: %s", e)
+
+    # 3. Purge downloaded model files and caches from disk if requested
+    if purge_disk:
+        possible_dirs: list[Path] = []
+        for env_var in ["HF_HUB_CACHE", "HF_HOME", "TRANSFORMERS_CACHE"]:
+            val = os.environ.get(env_var)
+            if val:
+                possible_dirs.append(Path(val))
+                possible_dirs.append(Path(val) / "hub")
+
+        possible_dirs.extend(
+            [
+                Path.home() / ".cache" / "huggingface" / "hub",
+                Path.home() / ".cache" / "huggingface",
+                Path("/root/.cache/huggingface/hub"),
+                Path("/root/.cache/huggingface"),
+                Path("/kaggle/working/.cache"),
+                Path("/tmp/huggingface"),
+            ]
+        )
+
+        for base_dir in possible_dirs:
+            if not base_dir.exists():
+                continue
+            try:
+                # If specific model name given, delete that specific model repo folder
+                if model_name:
+                    cleaned_name = model_name.strip().replace("/", "--")
+                    folder_name = f"models--{cleaned_name}"
+                    target_folder = base_dir / folder_name
+                    if target_folder.exists():
+                        shutil.rmtree(target_folder, ignore_errors=True)
+                        logger.info("[cleanup] Deleted model weights directory: %s", target_folder)
+
+                # Also remove any dangling models--* folders or snapshots
+                for item in list(base_dir.glob("models--*")):
+                    if item.is_dir():
+                        shutil.rmtree(item, ignore_errors=True)
+                        logger.info("[cleanup] Purged model cache directory: %s", item)
+            except Exception as e:
+                logger.warning("[cleanup] Error purging cache dir %s: %s", base_dir, e)
 
 
 def generate_with_real_gpu_model(

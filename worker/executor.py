@@ -176,13 +176,31 @@ class TaskExecutor:
                 execution_time_seconds=round(elapsed, 2),
             )
         finally:
-            # 7. Clean up temporary job files
+            # 7. Clean up temporary job files and workspace
             try:
                 if job_dir.exists():
                     shutil.rmtree(job_dir, ignore_errors=True)
                     logger.info("Cleaned up workspace directory for job %s", task.job_id)
             except Exception as e:
                 logger.warning("Failed to clean up job directory %s: %s", job_dir, e)
+
+            # 8. Delete full model and other artifacts from worker node (GPU VRAM + Local Disk)
+            if getattr(self.settings, "PURGE_MODEL_AFTER_TASK", True):
+                try:
+                    from worker.docker_runtime import purge_model_and_vram
+
+                    model_name = task.parameters.get("model_name")
+                    purge_model_and_vram(model_name=model_name, purge_disk=True)
+                    if progress_callback:
+                        progress_callback(
+                            100.0, "Purged model weights from GPU VRAM & local storage"
+                        )
+                    logger.info(
+                        "Completely deleted model and temporary artifacts for job %s from worker node",
+                        task.job_id,
+                    )
+                except Exception as e:
+                    logger.warning("Error during post-task model purge: %s", e)
 
 
 # Singleton
