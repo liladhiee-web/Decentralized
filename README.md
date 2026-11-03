@@ -175,8 +175,8 @@ gooys/
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/decentralized-ai-cloud.git
-cd decentralized-ai-cloud
+git clone https://github.com/liladhiee-web/Decentralized.git
+cd Decentralized
 
 # Set up environment variables
 cp .env.example .env

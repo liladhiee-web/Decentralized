@@ -24,3 +24,4 @@ if __name__ == "__main__":
         asyncio.run(agent.start())
     except KeyboardInterrupt:
         print("[*] Worker stopped by user.")
+

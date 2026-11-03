@@ -14,7 +14,7 @@ WORKER_TOKEN=""
 INSTALL_DIR="/opt/cloudai-worker"
 SERVICE_NAME="cloudai-worker"
 SOURCE_DIR=""
-REPO_URL="https://github.com/your-org/decentralized-ai-cloud.git"
+REPO_URL="https://github.com/liladhiee-web/Decentralized.git"
 
 log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }

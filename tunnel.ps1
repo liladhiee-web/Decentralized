@@ -25,3 +25,4 @@ if ($Target -eq "dashboard") {
 Write-Host "[*] Starting tunnel... Look for the 'https://*.trycloudflare.com' URL below:`n" -ForegroundColor Green
 
 & $cloudflared tunnel --url "http://localhost:$port"
+
