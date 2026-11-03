@@ -9,7 +9,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from coordinator.auth.dependencies import get_api_key_or_user, get_current_active_user, require_role
+from coordinator.auth.dependencies import (
+    get_api_key_or_user,
+    get_current_active_user,
+    get_optional_user,
+    require_role,
+)
 from coordinator.auth.security import generate_worker_token
 from coordinator.config import get_settings
 from coordinator.database import get_db
@@ -77,7 +82,7 @@ async def register_worker(
 @router.get("", response_model=list[WorkerResponse], summary="List GPU Workers")
 async def list_workers(
     status_filter: WorkerStatus | None = Query(default=None, alias="status"),
-    current_user: User = Depends(get_api_key_or_user),
+    current_user: User | None = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ) -> list[Worker]:
     """List all registered GPU workers and their hardware specifications."""

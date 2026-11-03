@@ -44,11 +44,21 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Initializing Decentralized AI Cloud Coordinator...")
     logger.info("Operating Environment: %s", settings.ENVIRONMENT)
 
-    # Initialize MinIO Storage Buckets
+    # Initialize MinIO Storage Buckets (quick socket probe to avoid blocking startup if offline)
     try:
-        storage = get_storage_service()
-        storage.ensure_buckets_exist()
-        logger.info("MinIO storage buckets verified.")
+        import socket
+        minio_host, minio_port = settings.MINIO_ENDPOINT.split(":")
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(0.5)
+        is_minio_listening = (sock.connect_ex((minio_host, int(minio_port))) == 0)
+        sock.close()
+
+        if is_minio_listening:
+            storage = get_storage_service()
+            storage.ensure_buckets_exist()
+            logger.info("MinIO storage buckets verified.")
+        else:
+            logger.info("MinIO storage offline; bucket verification deferred.")
     except Exception as exc:
         logger.warning(
             "MinIO bucket initialization deferred (storage offline during startup): %s", exc

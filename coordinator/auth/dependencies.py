@@ -136,6 +136,20 @@ async def get_api_key_or_user(
     return await get_current_user(credentials, db)
 
 
+async def get_optional_user(
+    credentials: HTTPAuthorizationCredentials | None = Security(bearer_scheme),
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+    db: AsyncSession = Depends(get_db),
+) -> User | None:
+    """Optionally resolves authenticated user if credentials exist, otherwise returns None."""
+    if not credentials and not x_api_key:
+        return None
+    try:
+        return await get_api_key_or_user(credentials, x_api_key, db)
+    except HTTPException:
+        return None
+
+
 def require_role(allowed_roles: list[UserRole]) -> Callable[[User], Any]:
     """Dependency factory restricting endpoints to specific user roles."""
 
