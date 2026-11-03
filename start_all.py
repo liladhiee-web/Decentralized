@@ -44,7 +44,7 @@ def kill_process_on_port(port: int) -> None:
             if pid_str and pid_str != "0":
                 pid = int(pid_str)
                 print(f"[*] Port {port} is occupied by PID {pid}. Freeing port...")
-                subprocess.run(f"taskkill /F /PID {pid}", shell=True, capture_output=True)
+                subprocess.run(f"taskkill /F /T /PID {pid}", shell=True, capture_output=True)
                 time.sleep(0.5)
     except Exception:
         pass
