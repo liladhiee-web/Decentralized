@@ -1,0 +1,233 @@
+# ==============================================================================
+# Decentralized AI Cloud Platform - Production Docker Compose Deployment
+# Designed for 8 vCPU AMD EPYC/Intel Xeon, 32 GB RAM, 1 TB NVMe Host
+# ==============================================================================
+
+services:
+  # ----------------------------------------------------------------------------
+  # PostgreSQL Database - Primary relational state and audit store
+  # ----------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: cloudai_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-cloudai_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cloudai_secure_password_replace_in_prod}
+      POSTGRES_DB: ${POSTGRES_DB:-cloudai_db}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - cloudai_internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cloudai_user} -d ${POSTGRES_DB:-cloudai_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 4096M
+
+  # ----------------------------------------------------------------------------
+  # Redis - Job queues, fast ephemeral state, worker heartbeats, rate limiting
+  # ----------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: cloudai_redis
+    restart: unless-stopped
+    command: >
+      redis-server 
+      --requirepass ${REDIS_PASSWORD:-cloudai_redis_secure_pass}
+      --appendonly yes
+      --maxmemory 1024mb
+      --maxmemory-policy volatile-lru
+    volumes:
+      - redis_data:/data
+    networks:
+      - cloudai_internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-cloudai_redis_secure_pass}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 2048M
+
+  # ----------------------------------------------------------------------------
+  # MinIO - S3-compatible Object Storage for Models, Datasets, and Checkpoints
+  # ----------------------------------------------------------------------------
+  minio:
+    image: quay.io/minio/minio:RELEASE.2024-08-03T04-33-23Z
+    container_name: cloudai_minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-cloudai_minio_admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-cloudai_minio_secret_key_change_me}
+      MINIO_BROWSER: "on"
+    volumes:
+      - minio_data:/data
+    networks:
+      - cloudai_internal
+    ports:
+      # Expose MinIO on localhost only for local dev artifact inspections
+      - "127.0.0.1:9000:9000"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 4096M
+
+  # ----------------------------------------------------------------------------
+  # Central Coordinator - FastAPI REST API & WebSocket Gateway (No GPU locally)
+  # ----------------------------------------------------------------------------
+  coordinator:
+    build:
+      context: .
+      dockerfile: deployment/Dockerfile.coordinator
+    container_name: cloudai_coordinator
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      MINIO_ENDPOINT: minio:9000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - cloudai_internal
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.5"
+          memory: 6144M
+
+  # ----------------------------------------------------------------------------
+  # Celery Asynchronous Background Worker
+  # ----------------------------------------------------------------------------
+  celery_worker:
+    build:
+      context: .
+      dockerfile: deployment/Dockerfile.coordinator
+    container_name: cloudai_celery_worker
+    restart: unless-stopped
+    command: celery -A coordinator.tasks.celery_app worker -l info -c 4 -Q celery,artifacts,scheduling
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      MINIO_ENDPOINT: minio:9000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - cloudai_internal
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 3072M
+
+  # ----------------------------------------------------------------------------
+  # Celery Beat Periodic Scheduler (Heartbeat Reaper & Stale Task Watcher)
+  # ----------------------------------------------------------------------------
+  celery_beat:
+    build:
+      context: .
+      dockerfile: deployment/Dockerfile.coordinator
+    container_name: cloudai_celery_beat
+    restart: unless-stopped
+    command: celery -A coordinator.tasks.celery_app beat -l info
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - cloudai_internal
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+
+  # ----------------------------------------------------------------------------
+  # Caddy Reverse Proxy - Edge TLS Termination & Routing
+  # ----------------------------------------------------------------------------
+  caddy:
+    image: caddy:2-alpine
+    container_name: cloudai_caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deployment/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - coordinator
+    networks:
+      - cloudai_internal
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+
+# ==============================================================================
+# Persistent Volumes
+# ==============================================================================
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  minio_data:
+    driver: local
+  caddy_data:
+    driver: local
+  caddy_config:
+    driver: local
+
+# ==============================================================================
+# Internal Isolated Network
+# ==============================================================================
+networks:
+  cloudai_internal:
+    driver: bridge
+

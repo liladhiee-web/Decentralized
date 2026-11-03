@@ -1,0 +1,66 @@
+# ==============================================================================
+# Decentralized AI Cloud - Central Coordinator Production Dockerfile
+# Optimized for 8 vCPU, 32 GB RAM AMD EPYC/Intel Xeon Coordinator VPS
+# ==============================================================================
+
+FROM python:3.11-slim-bookworm AS builder
+
+WORKDIR /build
+
+# Install build tools for compiling C extensions (if required)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy packaging configuration
+COPY pyproject.toml .
+
+# Install dependencies into virtualenv
+RUN python -m venv /opt/venv && \
+    /opt/venv/bin/pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    /opt/venv/bin/pip install --no-cache-dir .
+
+# ==============================================================================
+# Final Runtime Stage
+# ==============================================================================
+FROM python:3.11-slim-bookworm AS runtime
+
+WORKDIR /app
+
+# Install minimal runtime dependencies (curl for container health checks)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy virtualenv from builder
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app
+
+# Create unprivileged application user
+RUN groupadd -g 10001 cloudai && \
+    useradd -u 10001 -g cloudai -s /bin/bash -m cloudai && \
+    chown -R cloudai:cloudai /app
+
+# Copy application code and migrations
+COPY --chown=cloudai:cloudai coordinator /app/coordinator
+COPY --chown=cloudai:cloudai shared /app/shared
+COPY --chown=cloudai:cloudai migrations /app/migrations
+COPY --chown=cloudai:cloudai alembic.ini /app/alembic.ini
+
+# Switch to unprivileged user
+USER cloudai
+
+# Expose internal API port
+EXPOSE 8000
+
+# Container health probe
+HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:8000/health/live || exit 1
+
+# Launch production server with multiple uvicorn workers
+CMD ["uvicorn", "coordinator.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4", "--proxy-headers", "--forwarded-allow-ips", "*"]
+

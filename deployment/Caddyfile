@@ -1,0 +1,39 @@
+# ==============================================================================
+# Caddy Reverse Proxy Configuration for Decentralized AI Cloud Coordinator
+# ==============================================================================
+
+{
+    # Global options
+    auto_https off
+    admin off
+    log {
+        output stdout
+        format json
+    }
+}
+
+:80 {
+    # Request routing to FastAPI Coordinator
+    reverse_proxy coordinator:8000 {
+        # Streaming and WebSocket header preservation
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+
+        # Enable streaming buffer flushing for SSE and model chunking
+        flush_interval -1
+    }
+
+    # Security Headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    # Compression for text, JSON, and OpenAPI schemas
+    encode gzip zstd
+}
+
