@@ -91,6 +91,8 @@ class JobResponse(BaseModel):
 class JobDetailResponse(JobResponse):
     input_parameters: dict[str, Any]
     resource_requirements: dict[str, Any]
+    output_text: str | None = None
+    execution_metrics: dict[str, Any] | None = None
     events: list[JobEventResponse] = Field(default_factory=list)
 
 

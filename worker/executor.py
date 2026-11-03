@@ -142,6 +142,13 @@ class TaskExecutor:
             if progress_callback:
                 progress_callback(100.0, "Task execution finished successfully")
 
+            # Ensure output text is captured in metrics for coordinator & dashboard display
+            if (output_dir / "output.txt").exists() and "output_text" not in metrics:
+                try:
+                    metrics["output_text"] = (output_dir / "output.txt").read_text(encoding="utf-8")
+                except Exception:
+                    pass
+
             return TaskResult(
                 job_id=task.job_id,
                 status=JobStatus.COMPLETED,

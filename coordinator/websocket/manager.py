@@ -401,12 +401,14 @@ class WorkerConnectionManager:
             db.add(usage)
 
             # Record completion audit event
+            output_text = comp.result.metrics.get("output_text")
             event = JobEvent(
                 job_id=job.id,
                 event_type="completed",
                 details={
                     "execution_time_seconds": exec_time,
                     "metrics": comp.result.metrics,
+                    "output_text": output_text,
                 },
             )
             db.add(event)
