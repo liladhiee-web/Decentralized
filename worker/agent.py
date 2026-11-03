@@ -102,9 +102,16 @@ class WorkerAgent:
                         await asyncio.sleep(5.0)
                         continue
 
+                    session_worker_id = auth_ack.get("session_id")
+                    if session_worker_id:
+                        try:
+                            self.worker_id = UUID(session_worker_id)
+                        except Exception:
+                            pass
+
                     logger.info(
                         "Worker successfully authenticated with coordinator session %s",
-                        auth_ack.get("session_id"),
+                        self.worker_id,
                     )
 
                     # 2. Start Background Heartbeat Loop

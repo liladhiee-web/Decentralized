@@ -112,12 +112,24 @@ class WorkerConnectionManager:
 
             # Authenticate against database
             async with get_db_context() as db:
-                result = await db.execute(
-                    select(Worker)
-                    .where(Worker.id == auth_msg.worker_id)
-                    .options(selectinload(Worker.gpu_devices))
-                )
-                worker = result.scalar_one_or_none()
+                worker = None
+                if auth_msg.worker_id:
+                    result = await db.execute(
+                        select(Worker)
+                        .where(Worker.id == auth_msg.worker_id)
+                        .options(selectinload(Worker.gpu_devices))
+                    )
+                    worker = result.scalar_one_or_none()
+
+                # Token fallback: resolve worker by token if ID not matched
+                if not worker and auth_msg.token:
+                    all_workers_res = await db.execute(
+                        select(Worker).options(selectinload(Worker.gpu_devices))
+                    )
+                    for w in all_workers_res.scalars().all():
+                        if verify_worker_token(auth_msg.token, w.auth_token_hash):
+                            worker = w
+                            break
 
                 if not worker or not verify_worker_token(auth_msg.token, worker.auth_token_hash):
                     logger.warning(
