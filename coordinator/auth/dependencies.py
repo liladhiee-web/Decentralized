@@ -110,13 +110,14 @@ async def get_api_key_or_user(
 
         now = datetime.now(UTC)
         expires_at = api_key.expires_at
-        if expires_at and expires_at.tzinfo is None:
-            expires_at = expires_at.replace(tzinfo=UTC)
-        if expires_at and expires_at < now:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="API key has expired",
-            )
+        if expires_at:
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=UTC)
+            if expires_at < now:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="API key has expired",
+                )
 
         # Update last_used_at timestamp asynchronously
         api_key.last_used_at = now
