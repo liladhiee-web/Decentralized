@@ -65,6 +65,9 @@ dev = [
     "types-redis>=4.6.0",
 ]
 
+[project.scripts]
+cloudai = "cli.client:main"
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["coordinator*", "worker*", "cli*", "shared*"]
