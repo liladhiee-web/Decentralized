@@ -142,7 +142,6 @@ def main() -> None:
         "0.0.0.0",
         "--port",
         "8000",
-        "--reload",
     ]
     coord_proc = subprocess.Popen(coord_cmd, cwd=str(PROJECT_ROOT))
     processes.append(coord_proc)
@@ -239,14 +238,10 @@ await agent.run()
     print("=" * 80)
     print("[*] Press Ctrl+C anytime to stop all servers and tunnels cleanly.\n")
 
-    # Keep script alive
+    # Keep script alive until Ctrl+C
     try:
         while True:
             time.sleep(1)
-            # Check if any crucial process died
-            if coord_proc.poll() is not None:
-                print("[!] Coordinator process terminated unexpectedly.")
-                break
     except KeyboardInterrupt:
         pass
 
