@@ -33,6 +33,8 @@ class JobStatus(StrEnum):
 class JobType(StrEnum):
     INFERENCE_TEXT = "inference_text"
     INFERENCE_IMAGE = "inference_image"
+    INFERENCE_AUDIO = "inference_audio"
+    INFERENCE_VIDEO = "inference_video"
     TRAINING_LORA = "training_lora"
     TRAINING_FEDERATED = "training_federated"
 
@@ -40,6 +42,8 @@ class JobType(StrEnum):
 class ArtifactType(StrEnum):
     MODEL_ADAPTER = "model_adapter"
     IMAGE_OUTPUT = "image_output"
+    AUDIO_OUTPUT = "audio_output"
+    VIDEO_OUTPUT = "video_output"
     LOG_ARCHIVE = "log_archive"
     CHECKPOINT = "checkpoint"
     DATASET = "dataset"

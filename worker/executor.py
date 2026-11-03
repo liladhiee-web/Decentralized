@@ -76,6 +76,10 @@ class TaskExecutor:
                 command = ["python", "-m", "worker.workloads.inference_text"]
             elif task.job_type == JobType.INFERENCE_IMAGE:
                 command = ["python", "-m", "worker.workloads.inference_image"]
+            elif task.job_type == JobType.INFERENCE_AUDIO:
+                command = ["python", "-m", "worker.workloads.inference_audio"]
+            elif task.job_type == JobType.INFERENCE_VIDEO:
+                command = ["python", "-m", "worker.workloads.inference_video"]
             elif task.job_type == JobType.TRAINING_LORA:
                 command = ["python", "-m", "worker.workloads.training_lora"]
             elif task.job_type == JobType.TRAINING_FEDERATED:
@@ -115,6 +119,8 @@ class TaskExecutor:
             possible_outputs = [
                 output_dir / "output.safetensors",
                 output_dir / "output.png",
+                output_dir / "output.wav",
+                output_dir / "output.mp4",
                 output_dir / "output.txt",
                 output_dir / "adapter_model.safetensors",
                 output_dir / "delta_weights.safetensors",

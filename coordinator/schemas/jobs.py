@@ -25,7 +25,7 @@ class SubmitInferenceTextRequest(BaseModel):
     top_p: float = Field(default=0.9, ge=0.0, le=1.0)
     stream: bool = Field(default=False, description="Whether to stream response tokens via SSE")
     stop_sequences: list[str] = Field(default_factory=list)
-    min_vram_mb: int = Field(default=8192, ge=2048, description="Required GPU VRAM")
+    min_vram_mb: int = Field(default=2048, ge=512, description="Required GPU VRAM")
 
 
 class SubmitInferenceImageRequest(BaseModel):
@@ -40,7 +40,38 @@ class SubmitInferenceImageRequest(BaseModel):
     num_inference_steps: int = Field(default=30, ge=1, le=100)
     guidance_scale: float = Field(default=7.5, ge=1.0, le=20.0)
     seed: int | None = None
-    min_vram_mb: int = Field(default=8192, ge=4096)
+    min_vram_mb: int = Field(default=4096, ge=1024)
+
+
+class SubmitInferenceAudioRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    model_id: UUID | None = None
+    model_name: str | None = Field(
+        default="openai/whisper-tiny",
+        description="Audio model identifier, e.g. 'openai/whisper-base' or 'suno/bark-small'",
+    )
+    prompt: str = Field(
+        ..., min_length=1, max_length=8192, description="Audio prompt or input transcript"
+    )
+    task_type: str = Field(
+        default="transcribe", description="'transcribe' for STT or 'synthesize' for TTS"
+    )
+    min_vram_mb: int = Field(default=2048, ge=512)
+
+
+class SubmitInferenceVideoRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    model_id: UUID | None = None
+    model_name: str | None = Field(
+        default="stabilityai/stable-video-diffusion-img2vid",
+        description="Video synthesis model identifier",
+    )
+    prompt: str = Field(..., min_length=1, max_length=2048)
+    num_frames: int = Field(default=14, ge=4, le=60)
+    fps: int = Field(default=6, ge=1, le=30)
+    min_vram_mb: int = Field(default=8192, ge=2048)
 
 
 class SubmitTrainingLoraRequest(BaseModel):

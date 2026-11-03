@@ -25,8 +25,10 @@ from coordinator.schemas.jobs import (
     JobEventResponse,
     JobListResponse,
     JobResponse,
+    SubmitInferenceAudioRequest,
     SubmitInferenceImageRequest,
     SubmitInferenceTextRequest,
+    SubmitInferenceVideoRequest,
     SubmitTrainingLoraRequest,
 )
 from coordinator.schemas.workers import (
@@ -52,6 +54,8 @@ __all__ = [
     "WorkerStatusUpdateRequest",
     "SubmitInferenceTextRequest",
     "SubmitInferenceImageRequest",
+    "SubmitInferenceAudioRequest",
+    "SubmitInferenceVideoRequest",
     "SubmitTrainingLoraRequest",
     "JobResponse",
     "JobDetailResponse",

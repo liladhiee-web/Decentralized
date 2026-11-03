@@ -1,6 +1,6 @@
 import "./globals.css";
 import Link from "next/link";
-import { Cpu, Server, Play, Flame, Database, ListFilter, ShieldCheck } from "lucide-react";
+import { Cpu, Server, Play, Flame, Database, ListFilter, ShieldCheck, HardDrive } from "lucide-react";
 
 export const metadata = {
   title: "CloudAI - Decentralized GPU Compute Platform",
@@ -41,6 +41,13 @@ export default function RootLayout({
             >
               <Server className="w-4 h-4 text-emerald-400" />
               <span>GPU Marketplace</span>
+            </Link>
+            <Link
+              href="/workers"
+              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-800/60 transition-colors"
+            >
+              <HardDrive className="w-4 h-4 text-cyan-400" />
+              <span>Workers Dashboard</span>
             </Link>
             <Link
               href="/inference"
@@ -89,6 +96,13 @@ export default function RootLayout({
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
                 Coordinator Online
               </div>
+              <Link
+                href="/workers"
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 transition-colors"
+              >
+                <Cpu className="w-3.5 h-3.5" />
+                <span>Connect Worker</span>
+              </Link>
             </div>
 
             <div className="flex items-center gap-4">

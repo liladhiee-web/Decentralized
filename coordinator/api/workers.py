@@ -4,7 +4,7 @@ GPU Compute Worker Management and Marketplace Endpoints.
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -13,7 +13,7 @@ from coordinator.auth.dependencies import (
     get_api_key_or_user,
     get_current_active_user,
     get_optional_user,
-    require_role,
+    get_user_or_demo,
 )
 from coordinator.auth.security import generate_worker_token
 from coordinator.config import get_settings
@@ -40,11 +40,12 @@ settings = get_settings()
 )
 async def register_worker(
     payload: WorkerRegisterRequest,
-    current_user: User = Depends(require_role([UserRole.PROVIDER, UserRole.ADMIN])),
+    request: Request,
+    current_user: User = Depends(get_user_or_demo),
     db: AsyncSession = Depends(get_db),
 ) -> WorkerRegisterResponse:
-    """
-    Register a new community compute worker.
+    """Register a new community compute worker.
+
     Generates a cryptographically secure worker secret token.
     The raw token is returned exactly once and must be configured on the worker daemon.
     """
@@ -63,11 +64,20 @@ async def register_worker(
     await db.commit()
     await db.refresh(worker)
 
-    ws_scheme = "wss" if settings.ENVIRONMENT == "production" else "ws"
-    ws_url = f"{ws_scheme}://{settings.HOST}:{settings.PORT}/ws/workers"
+    forwarded_host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+    forwarded_proto = request.headers.get("x-forwarded-proto") or request.url.scheme
+    if forwarded_host:
+        ws_proto = "wss" if forwarded_proto == "https" else "ws"
+        ws_url = f"{ws_proto}://{forwarded_host}/ws/workers"
+        base_url = f"{forwarded_proto}://{forwarded_host}"
+    else:
+        ws_scheme = "wss" if settings.ENVIRONMENT == "production" else "ws"
+        ws_url = f"{ws_scheme}://{settings.HOST}:{settings.PORT}/ws/workers"
+        base_url = f"http://{settings.HOST}:{settings.PORT}"
+
     install_cmd = (
-        f"curl -fsSL http://{settings.HOST}:{settings.PORT}/deployment/install.sh | "
-        f"bash -s -- --token {raw_token} --coordinator http://{settings.HOST}:{settings.PORT}"
+        f"curl -fsSL {base_url}/deployment/install.sh | "
+        f"bash -s -- --token {raw_token} --coordinator {base_url}"
     )
 
     return WorkerRegisterResponse(

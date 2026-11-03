@@ -142,6 +142,7 @@ def main() -> None:
         "0.0.0.0",
         "--port",
         "8000",
+        "--reload",
     ]
     coord_proc = subprocess.Popen(coord_cmd, cwd=str(PROJECT_ROOT))
     processes.append(coord_proc)
@@ -218,6 +219,8 @@ def main() -> None:
     print("🎉 ALL PLATFORM SERVICES & SECURE TUNNELS ARE LIVE!")
     print("=" * 80)
     print(f"🌐 Web Dashboard (Public):   {dash_url}")
+    print(f"🖥️ Workers Dashboard:        {dash_url}/workers")
+    print(f"⚡ AI Inference Console:     {dash_url}/inference")
     print(f"📊 Marketplace Page:        {dash_url}/marketplace")
     print(f"⚙️ Coordinator API (Public):  {coord_url}")
     print(f"📖 Swagger Docs:             {coord_url}/docs")
