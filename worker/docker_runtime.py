@@ -45,9 +45,16 @@ def generate_with_real_gpu_model(
     if not chosen_model or "Llama" in chosen_model or "meta-llama" in chosen_model:
         chosen_model = "Qwen/Qwen2.5-0.5B-Instruct"
 
-    if _CACHED_MODEL is None or _CACHED_MODEL_NAME != chosen_model:
+    def safe_log(msg: str) -> None:
+        logger.info("[real-gpu] %s", msg)
         if log_callback:
-            log_callback(f"Loading neural network '{chosen_model}' on {device.upper()}...")
+            try:
+                log_callback(msg)
+            except Exception:
+                pass
+
+    if _CACHED_MODEL is None or _CACHED_MODEL_NAME != chosen_model:
+        safe_log(f"Loading neural network '{chosen_model}' on {device.upper()}...")
         try:
             tokenizer = AutoTokenizer.from_pretrained(chosen_model, trust_remote_code=True)
             model = AutoModelForCausalLM.from_pretrained(
@@ -75,8 +82,7 @@ def generate_with_real_gpu_model(
         model = _CACHED_MODEL
         tokenizer = _CACHED_TOKENIZER
 
-    if log_callback:
-        log_callback(f"Generating tokens with {chosen_model} on {device.upper()}...")
+    safe_log(f"Generating tokens with {chosen_model} on {device.upper()}...")
 
     # Format prompt with chat template if available
     if hasattr(tokenizer, "apply_chat_template") and tokenizer.chat_template:
@@ -307,7 +313,12 @@ class DockerRuntime:
                 import torch as _t
 
                 dev = "cuda" if _t.cuda.is_available() else "cpu"
-                log_callback(f"NVIDIA PyTorch runtime active ({dev.upper()}). Launching model...")
+                try:
+                    log_callback(
+                        f"NVIDIA PyTorch runtime active ({dev.upper()}). Launching model..."
+                    )
+                except Exception:
+                    pass
 
             output_text, metrics = await asyncio.to_thread(
                 generate_with_real_gpu_model,
@@ -318,7 +329,9 @@ class DockerRuntime:
                 log_callback=log_callback,
             )
         except Exception as e:
-            logger.info("Real GPU generation unavailable (%s); using fallback", e)
+            logger.warning(
+                "Real GPU generation encountered exception (%s); using fallback", e, exc_info=True
+            )
 
         # 3. Fallback if PyTorch/Transformers not available in the environment
         if not output_text:

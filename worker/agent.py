@@ -193,8 +193,13 @@ class WorkerAgent:
             except Exception:
                 pass
 
+        loop = asyncio.get_running_loop()
+
         def sync_progress(pct: float, line: str) -> None:
-            asyncio.create_task(progress_sender(pct, line))
+            try:
+                asyncio.run_coroutine_threadsafe(progress_sender(pct, line), loop)
+            except Exception:
+                pass
 
         # Execute workload
         try:
