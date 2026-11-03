@@ -10,6 +10,7 @@ Captures and prints the live public HTTPS/WSS URLs automatically.
 """
 
 import atexit
+import functools
 import re
 import signal
 import subprocess
@@ -18,6 +19,13 @@ import time
 from pathlib import Path
 from threading import Thread
 from typing import TextIO
+
+# Ensure instant unbuffered output even when redirected to files or pipes
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(line_buffering=True)
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(line_buffering=True)
+print = functools.partial(print, flush=True)
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 CLOUDFLARED = PROJECT_ROOT / "tools" / "cloudflared.exe"
@@ -78,7 +86,7 @@ signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
 
 
-def capture_tunnel_url(pipe: TextIO, url_holder: list[str]) -> None:
+def capture_tunnel_url(pipe: TextIO, url_holder: list[str], name: str = "Tunnel") -> None:
     """Thread target that parses Cloudflare output to capture the public URL."""
     url_pattern = re.compile(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com")
     while True:
@@ -89,6 +97,7 @@ def capture_tunnel_url(pipe: TextIO, url_holder: list[str]) -> None:
         if match and not url_holder:
             found_url = match.group(0)
             url_holder.append(found_url)
+            print(f"[+] {name} established: {found_url}")
 
 
 def main() -> None:
@@ -165,7 +174,9 @@ def main() -> None:
 
     dash_url_holder: list[str] = []
     dash_thread = Thread(
-        target=capture_tunnel_url, args=(dash_tunnel_proc.stdout, dash_url_holder), daemon=True
+        target=capture_tunnel_url,
+        args=(dash_tunnel_proc.stdout, dash_url_holder, "Web Dashboard Tunnel"),
+        daemon=True,
     )
     dash_thread.start()
 
@@ -183,7 +194,9 @@ def main() -> None:
 
     coord_url_holder: list[str] = []
     coord_thread = Thread(
-        target=capture_tunnel_url, args=(coord_tunnel_proc.stdout, coord_url_holder), daemon=True
+        target=capture_tunnel_url,
+        args=(coord_tunnel_proc.stdout, coord_url_holder, "Coordinator API Tunnel"),
+        daemon=True,
     )
     coord_thread.start()
 
