@@ -13,6 +13,8 @@ COORDINATOR_URL="http://localhost:8000"
 WORKER_TOKEN=""
 INSTALL_DIR="/opt/cloudai-worker"
 SERVICE_NAME="cloudai-worker"
+SOURCE_DIR=""
+REPO_URL="https://github.com/your-org/decentralized-ai-cloud.git"
 
 log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
@@ -33,9 +35,17 @@ while [[ $# -gt 0 ]]; do
             INSTALL_DIR="$2"
             shift 2
             ;;
+        --source)
+            SOURCE_DIR="$2"
+            shift 2
+            ;;
+        --repo)
+            REPO_URL="$2"
+            shift 2
+            ;;
         *)
             log_error "Unknown option: $1"
-            echo "Usage: $0 --token <WORKER_REGISTRATION_TOKEN> [--coordinator <URL>] [--dir <PATH>]"
+            echo "Usage: $0 --token <WORKER_REGISTRATION_TOKEN> [--coordinator <URL>] [--dir <PATH>] [--source <PATH>] [--repo <GIT_URL>]"
             exit 1
             ;;
     esac
@@ -90,6 +100,24 @@ python3 -m venv "${INSTALL_DIR}/venv"
     "pydantic>=2.8.0" \
     "rich>=13.7.0" \
     "typer>=0.12.0"
+
+log_info "Installing worker package and modules..."
+if [[ -n "${SOURCE_DIR}" && -d "${SOURCE_DIR}/worker" ]]; then
+    log_info "Copying modules from specified source directory: ${SOURCE_DIR}"
+    cp -r "${SOURCE_DIR}/worker" "${INSTALL_DIR}/"
+    cp -r "${SOURCE_DIR}/shared" "${INSTALL_DIR}/"
+elif [[ -d "./worker" && -d "./shared" ]]; then
+    log_info "Copying modules from current working directory..."
+    cp -r "./worker" "${INSTALL_DIR}/"
+    cp -r "./shared" "${INSTALL_DIR}/"
+else
+    log_info "Fetching latest codebase from repository: ${REPO_URL}..."
+    TEMP_CLONE=$(mktemp -d)
+    git clone --depth 1 "${REPO_URL}" "${TEMP_CLONE}"
+    cp -r "${TEMP_CLONE}/worker" "${INSTALL_DIR}/"
+    cp -r "${TEMP_CLONE}/shared" "${INSTALL_DIR}/"
+    rm -rf "${TEMP_CLONE}"
+fi
 
 # Generate local worker configuration file
 log_info "Writing worker daemon configuration..."
