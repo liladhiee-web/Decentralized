@@ -66,3 +66,4 @@ if [[ -n "${MINIO_BACKUP}" && -f "${MINIO_BACKUP}" ]]; then
 fi
 
 log_info "Disaster recovery restore finished successfully."
+

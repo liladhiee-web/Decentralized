@@ -163,3 +163,4 @@ The worker status will display `ONLINE`, indicating that the persistent WebSocke
 ### Issue 4: `CUDA Out of Memory (OOM) during Workload Execution`
 - **Cause:** Model size or LoRA batch size exceeds available GPU VRAM.
 - **Resolution:** The worker daemon automatically reports `TASK_FAILED` with error code `ERR_CUDA_OOM`. The coordinator scheduler will avoid dispatching oversized workloads to this GPU class in the future.
+

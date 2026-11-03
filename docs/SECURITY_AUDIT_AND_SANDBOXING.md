@@ -120,3 +120,4 @@ When coordinating multi-node Federated LoRA training, the coordinator strictly v
    $$w_i = \frac{n_i}{\sum_{k=1}^K n_k}, \quad \sum_{i=1}^K w_i = 1.0$$
 
 Any adapter submission violating these mathematical invariants is rejected with HTTP 400 and logged to the audit trail.
+
