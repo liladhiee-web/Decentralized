@@ -246,9 +246,7 @@ async def get_job_details(
                 else None
             )
             execution_metrics = (
-                ev.details.get("metrics")
-                if isinstance(ev.details.get("metrics"), dict)
-                else None
+                ev.details.get("metrics") if isinstance(ev.details.get("metrics"), dict) else None
             )
             if output_text:
                 break
@@ -258,7 +256,7 @@ async def get_job_details(
         p = job.input_parameters.get("prompt", "")
         output_text = (
             f"Hello! I am running on your decentralized community GPU compute node (NVIDIA Tesla T4).\n\n"
-            f"Response to your prompt \"{p}\":\n"
+            f'Response to your prompt "{p}":\n'
             f"Decentralized AI inference executed successfully with high throughput and low-latency control channels. "
             f"The worker authenticated securely, processed the model tensor operations, and streamed the result back over the encrypted tunnel."
         )

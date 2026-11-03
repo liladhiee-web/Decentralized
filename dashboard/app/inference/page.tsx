@@ -24,7 +24,7 @@ export default function InferencePage() {
         prompt,
         max_tokens: maxTokens,
         temperature,
-        model_name: "meta-llama/Llama-3-8B-Instruct",
+        model_name: "Qwen/Qwen2.5-0.5B-Instruct",
         min_vram_mb: 8192,
       } : {
         prompt,
