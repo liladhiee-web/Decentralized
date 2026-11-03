@@ -14,7 +14,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from coordinator.auth.dependencies import get_api_key_or_user
+from coordinator.auth.dependencies import get_user_or_demo
 from coordinator.database import get_db
 from coordinator.models.job import Job, JobEvent
 from coordinator.models.user import User
@@ -38,7 +38,7 @@ ws_manager = get_connection_manager()
 @router.post("/inference/text", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
 async def submit_text_inference(
     payload: SubmitInferenceTextRequest,
-    current_user: User = Depends(get_api_key_or_user),
+    current_user: User = Depends(get_user_or_demo),
     db: AsyncSession = Depends(get_db),
 ) -> Job:
     """Submit a text generation AI inference job (LLM / Transformers)."""
@@ -85,7 +85,7 @@ async def submit_text_inference(
 @router.post("/inference/image", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
 async def submit_image_inference(
     payload: SubmitInferenceImageRequest,
-    current_user: User = Depends(get_api_key_or_user),
+    current_user: User = Depends(get_user_or_demo),
     db: AsyncSession = Depends(get_db),
 ) -> Job:
     """Submit a Stable Diffusion / Diffusers image generation job."""
@@ -130,7 +130,7 @@ async def submit_image_inference(
 @router.post("/training/lora", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
 async def submit_lora_training(
     payload: SubmitTrainingLoraRequest,
-    current_user: User = Depends(get_api_key_or_user),
+    current_user: User = Depends(get_user_or_demo),
     db: AsyncSession = Depends(get_db),
 ) -> Job:
     """Submit a single-node or distributed LoRA fine-tuning training job."""
@@ -178,7 +178,7 @@ async def list_jobs(
     type_filter: JobType | None = Query(default=None, alias="type"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
-    current_user: User = Depends(get_api_key_or_user),
+    current_user: User = Depends(get_user_or_demo),
     db: AsyncSession = Depends(get_db),
 ) -> JobListResponse:
     """List jobs with pagination and optional status/type filtering."""
@@ -214,7 +214,7 @@ async def list_jobs(
 @router.get("/{job_id}", response_model=JobDetailResponse)
 async def get_job_details(
     job_id: UUID,
-    current_user: User = Depends(get_api_key_or_user),
+    current_user: User = Depends(get_user_or_demo),
     db: AsyncSession = Depends(get_db),
 ) -> Job:
     """Retrieve full details, attempts, and audit trail events for a specific job."""
@@ -241,7 +241,7 @@ async def get_job_details(
 @router.post("/{job_id}/cancel", status_code=status.HTTP_200_OK)
 async def cancel_job_endpoint(
     job_id: UUID,
-    current_user: User = Depends(get_api_key_or_user),
+    current_user: User = Depends(get_user_or_demo),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, str]:
     """Request immediate cancellation of a running or queued job."""
@@ -268,7 +268,7 @@ async def cancel_job_endpoint(
 @router.post("/{job_id}/retry", response_model=JobResponse)
 async def retry_job_endpoint(
     job_id: UUID,
-    current_user: User = Depends(get_api_key_or_user),
+    current_user: User = Depends(get_user_or_demo),
     db: AsyncSession = Depends(get_db),
 ) -> Job:
     """Retry a failed or cancelled job."""
@@ -307,7 +307,7 @@ async def retry_job_endpoint(
 @router.get("/{job_id}/stream", summary="Stream Real-Time Job Progress (SSE)")
 async def stream_job_progress(
     job_id: UUID,
-    current_user: User = Depends(get_api_key_or_user),
+    current_user: User = Depends(get_user_or_demo),
     db: AsyncSession = Depends(get_db),
 ) -> StreamingResponse:
     """

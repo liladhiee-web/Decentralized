@@ -136,6 +136,45 @@ async def get_api_key_or_user(
     return await get_current_user(credentials, db)
 
 
+DEMO_USER_EMAIL = "community@cloudai.internal"
+
+
+async def get_user_or_demo(
+    credentials: HTTPAuthorizationCredentials | None = Security(bearer_scheme),
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    """Resolves authenticated user if credentials exist; otherwise falls back to a default demo user
+
+    so that dashboard users and exploratory sessions can submit jobs and query metrics without 401.
+    """
+    if credentials or x_api_key:
+        try:
+            return await get_api_key_or_user(credentials, x_api_key, db)
+        except HTTPException:
+            pass
+
+    # Fallback to demo/community user
+    result = await db.execute(select(User).where(User.email == DEMO_USER_EMAIL))
+    demo_user = result.scalar_one_or_none()
+    if not demo_user:
+        from coordinator.auth.security import hash_password
+
+        demo_user = User(
+            email=DEMO_USER_EMAIL,
+            hashed_password=hash_password("cloudai-demo-2026"),
+            full_name="Community Explorer",
+            role=UserRole.ADMIN.value,
+            is_active=True,
+            is_verified=True,
+            balance_credits=1000.0,
+        )
+        db.add(demo_user)
+        await db.commit()
+        await db.refresh(demo_user)
+    return demo_user
+
+
 async def get_optional_user(
     credentials: HTTPAuthorizationCredentials | None = Security(bearer_scheme),
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),

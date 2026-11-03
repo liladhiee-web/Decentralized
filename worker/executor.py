@@ -128,10 +128,15 @@ class TaskExecutor:
             out_size: int | None = None
 
             if output_file and output_file.exists():
-                out_sha256, out_size = await self.artifact_client.upload_artifact(
-                    upload_url=task.result_upload_url,
-                    source_path=output_file,
-                )
+                try:
+                    out_sha256, out_size = await self.artifact_client.upload_artifact(
+                        upload_url=task.result_upload_url,
+                        source_path=output_file,
+                    )
+                except Exception as upload_err:
+                    logger.warning(
+                        "Artifact upload skipped or failed (storage offline): %s", upload_err
+                    )
 
             elapsed = time.perf_counter() - start_time
             if progress_callback:

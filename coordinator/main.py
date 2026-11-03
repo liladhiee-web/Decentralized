@@ -47,10 +47,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Initialize MinIO Storage Buckets (quick socket probe to avoid blocking startup if offline)
     try:
         import socket
+
         minio_host, minio_port = settings.MINIO_ENDPOINT.split(":")
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(0.5)
-        is_minio_listening = (sock.connect_ex((minio_host, int(minio_port))) == 0)
+        is_minio_listening = sock.connect_ex((minio_host, int(minio_port))) == 0
         sock.close()
 
         if is_minio_listening:

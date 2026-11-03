@@ -142,6 +142,7 @@ def main() -> None:
         "0.0.0.0",
         "--port",
         "8000",
+        "--reload",
     ]
     coord_proc = subprocess.Popen(coord_cmd, cwd=str(PROJECT_ROOT))
     processes.append(coord_proc)
