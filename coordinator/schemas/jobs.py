@@ -78,8 +78,25 @@ class SubmitTrainingLoraRequest(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     model_id: UUID | None = None
-    model_name: str = Field(..., description="Base model name, e.g. 'mistralai/Mistral-7B-v0.1'")
-    dataset_id: UUID = Field(..., description="Uploaded fine-tuning dataset ID")
+    model_name: str = Field(
+        default="Qwen/Qwen2.5-0.5B",
+        description="Base Hugging Face model repository name, e.g. 'Qwen/Qwen2.5-0.5B'",
+    )
+    dataset_id: UUID | None = Field(default=None, description="Optional local dataset ID")
+    dataset_name: str = Field(
+        default="tatsu-lab/alpaca",
+        description="Hugging Face dataset repository name, e.g. 'tatsu-lab/alpaca'",
+    )
+    num_batches: int = Field(
+        default=4,
+        ge=1,
+        le=16,
+        description="Number of distributed batch shards to divide the training into",
+    )
+    is_distributed: bool = Field(
+        default=True,
+        description="Whether to partition the dataset into discrete batches for distributed workers",
+    )
     lora_r: int = Field(default=16, ge=4, le=128, description="LoRA rank dimension")
     lora_alpha: int = Field(default=32, ge=8, le=256, description="LoRA scaling alpha")
     target_modules: list[str] = Field(
@@ -88,7 +105,44 @@ class SubmitTrainingLoraRequest(BaseModel):
     epochs: int = Field(default=3, ge=1, le=20)
     learning_rate: float = Field(default=2e-4, gt=0.0, lt=1e-1)
     batch_size: int = Field(default=4, ge=1, le=64)
-    min_vram_mb: int = Field(default=12288, ge=4096)
+    min_vram_mb: int = Field(default=4096, ge=1024)
+
+
+class TrainableBatchResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    batch_id: str
+    parent_job_id: str
+    model_name: str
+    dataset_name: str
+    batch_index: int
+    total_batches: int
+    dataset_slice: str
+    status: str  # available, in_progress, completed
+    assigned_worker_id: str | None = None
+    worker_name: str | None = None
+    reward_credits: float = 2.5
+    min_vram_mb: int = 4096
+    loss: float | None = None
+
+
+class DistributedTrainingJobResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: UUID
+    model_name: str
+    dataset_name: str
+    status: str
+    num_batches: int
+    completed_batches: int
+    progress_percent: float
+    output_text: str | None = None
+    batches: list[TrainableBatchResponse] = Field(default_factory=list)
+    created_at: datetime
+
+
+class ClaimBatchRequest(BaseModel):
+    worker_id: UUID
 
 
 class JobEventResponse(BaseModel):

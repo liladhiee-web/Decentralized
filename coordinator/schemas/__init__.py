@@ -21,6 +21,8 @@ from coordinator.schemas.auth import (
     UserResponse,
 )
 from coordinator.schemas.jobs import (
+    ClaimBatchRequest,
+    DistributedTrainingJobResponse,
     JobDetailResponse,
     JobEventResponse,
     JobListResponse,
@@ -30,6 +32,7 @@ from coordinator.schemas.jobs import (
     SubmitInferenceTextRequest,
     SubmitInferenceVideoRequest,
     SubmitTrainingLoraRequest,
+    TrainableBatchResponse,
 )
 from coordinator.schemas.workers import (
     GPUDeviceResponse,
@@ -57,6 +60,9 @@ __all__ = [
     "SubmitInferenceAudioRequest",
     "SubmitInferenceVideoRequest",
     "SubmitTrainingLoraRequest",
+    "ClaimBatchRequest",
+    "DistributedTrainingJobResponse",
+    "TrainableBatchResponse",
     "JobResponse",
     "JobDetailResponse",
     "JobListResponse",

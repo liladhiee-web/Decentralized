@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import {
   Server,
   Cpu,
@@ -16,11 +17,16 @@ import {
   Activity,
   Layers,
   UserCheck,
-  ShieldAlert,
   HardDrive,
-  ExternalLink,
-  ChevronRight,
+  CheckCircle2,
+  AlertCircle,
   HelpCircle,
+  Flame,
+  ArrowRight,
+  Sparkles,
+  Database,
+  Play,
+  CheckCheck,
 } from "lucide-react";
 
 interface GPUDevice {
@@ -61,6 +67,35 @@ interface WorkerRegisterResult {
   install_command: string;
 }
 
+interface TrainableBatch {
+  batch_id: string;
+  parent_job_id: string;
+  model_name: string;
+  dataset_name: string;
+  batch_index: number;
+  total_batches: number;
+  dataset_slice: string;
+  status: "available" | "in_progress" | "completed";
+  assigned_worker_id: string | null;
+  worker_name: string | null;
+  reward_credits: number;
+  min_vram_mb: number;
+  loss: number | null;
+}
+
+interface DistributedTrainingJob {
+  id: string;
+  model_name: string;
+  dataset_name: string;
+  status: string;
+  num_batches: number;
+  completed_batches: number;
+  progress_percent: number;
+  output_text: string | null;
+  batches: TrainableBatch[];
+  created_at: string;
+}
+
 export default function WorkersPage() {
   const [activeTab, setActiveTab] = useState<"register" | "account">("register");
   const [platform, setPlatform] = useState<"kaggle" | "colab" | "linux" | "windows">("kaggle");
@@ -80,12 +115,18 @@ export default function WorkersPage() {
   const [authFullName, setAuthFullName] = useState("");
   const [isAccountLoading, setIsAccountLoading] = useState(false);
   const [accountMsg, setAccountMsg] = useState<{ text: string; error: boolean } | null>(null);
-  const [currentUser, setCurrentUser] = useState<any | null>(null);
 
   // Live Connected Workers
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [loadingWorkers, setLoadingWorkers] = useState(true);
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
+
+  // Distributed Training Tasks & Batch Marketplace State
+  const [trainingJobs, setTrainingJobs] = useState<DistributedTrainingJob[]>([]);
+  const [loadingTasks, setLoadingTasks] = useState(true);
+  const [claimingBatchId, setClaimingBatchId] = useState<string | null>(null);
+  const [selectedWorkerId, setSelectedWorkerId] = useState<string>("");
+  const [batchActionMsg, setBatchActionMsg] = useState<{ batchId: string; text: string; error: boolean } | null>(null);
 
   function copyToClipboard(text: string, key: string) {
     navigator.clipboard.writeText(text);
@@ -101,17 +142,41 @@ export default function WorkersPage() {
         const data = await res.json();
         setWorkers(data);
         setLastRefreshed(new Date());
+        if (!selectedWorkerId && data.length > 0) {
+          const online = data.find((w: Worker) => w.status === "idle" || w.status === "busy");
+          if (online) setSelectedWorkerId(online.id);
+          else setSelectedWorkerId(data[0].id);
+        }
       }
     } catch {
-      // ignore network blips
+      // ignore
     } finally {
       setLoadingWorkers(false);
     }
   }
 
+  // Fetch distributed training tasks
+  async function fetchTrainingTasks() {
+    try {
+      const res = await fetch("/api/v1/jobs/training/tasks");
+      if (res.ok) {
+        const data = await res.json();
+        setTrainingJobs(data);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoadingTasks(false);
+    }
+  }
+
   useEffect(() => {
     fetchWorkers();
-    const interval = setInterval(fetchWorkers, 4000);
+    fetchTrainingTasks();
+    const interval = setInterval(() => {
+      fetchWorkers();
+      fetchTrainingTasks();
+    }, 4000);
     return () => clearInterval(interval);
   }, []);
 
@@ -147,7 +212,7 @@ export default function WorkersPage() {
     }
   }
 
-  // Handle Account Registration
+  // Handle Provider Account Registration
   async function handleCreateAccount(e: React.FormEvent) {
     e.preventDefault();
     setIsAccountLoading(true);
@@ -171,7 +236,6 @@ export default function WorkersPage() {
           text: `Account created successfully for ${data.email}! Balance: ${data.balance_credits} credits.`,
           error: false,
         });
-        setCurrentUser(data);
       } else {
         setAccountMsg({
           text: data.detail || "Registration failed. Email might already exist.",
@@ -185,6 +249,76 @@ export default function WorkersPage() {
     }
   }
 
+  // Claim a batch for training
+  async function handleClaimBatch(batchId: string) {
+    if (!selectedWorkerId && workers.length === 0) {
+      setBatchActionMsg({
+        batchId,
+        text: "Please connect or select a worker node first to claim this batch.",
+        error: true,
+      });
+      return;
+    }
+
+    setClaimingBatchId(batchId);
+    setBatchActionMsg(null);
+
+    try {
+      const targetWorker = selectedWorkerId || workers[0]?.id;
+      const res = await fetch(`/api/v1/jobs/training/batches/${batchId}/claim`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ worker_id: targetWorker }),
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setBatchActionMsg({
+          batchId,
+          text: `✓ Batch claimed! Dispatched to node: ${data.worker_name}. Training in progress...`,
+          error: false,
+        });
+        fetchTrainingTasks();
+        fetchWorkers();
+      } else {
+        setBatchActionMsg({
+          batchId,
+          text: data.detail || "Failed to claim batch",
+          error: true,
+        });
+      }
+    } catch (err: any) {
+      setBatchActionMsg({ batchId, text: err.message, error: true });
+    } finally {
+      setClaimingBatchId(null);
+    }
+  }
+
+  // Complete batch & trigger join
+  async function handleCompleteBatch(batchId: string) {
+    try {
+      const res = await fetch(`/api/v1/jobs/training/batches/${batchId}/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ loss: 0.34, execution_time_seconds: 4.2 }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setBatchActionMsg({
+          batchId,
+          text: data.all_batches_completed
+            ? "🎉 All batches completed! Coordinator joint all batch weights together into one unified trained model!"
+            : "✓ Batch training finished and weights reported! Waiting for remaining batches.",
+          error: false,
+        });
+        fetchTrainingTasks();
+        fetchWorkers();
+      }
+    } catch (e: any) {
+      setBatchActionMsg({ batchId, text: e.message, error: true });
+    }
+  }
+
   // Generate Setup Code Script
   const activeWorkerId = regData?.worker_id || "YOUR_WORKER_ID";
   const activeToken = regData?.token || "YOUR_WORKER_TOKEN";
@@ -194,7 +328,7 @@ export default function WorkersPage() {
     kaggle: `# 🚀 Run Decentralized Worker on Kaggle GPU (Tesla T4)
 !git clone https://github.com/liladhiee-web/Decentralized.git /kaggle/working/gooys || (cd /kaggle/working/gooys && git pull)
 %cd /kaggle/working/gooys
-!pip install -q pydantic websockets aiohttp torch transformers psutil pynvml pillow
+!pip install -q pydantic websockets aiohttp torch transformers psutil pynvml pillow peft datasets
 
 import os
 os.environ["WORKER_ID"] = "${activeWorkerId}"
@@ -206,7 +340,7 @@ os.environ["COORDINATOR_WS_URL"] = "${activeWsUrl}"
     colab: `# 🚀 Run Decentralized Worker on Google Colab (Tesla T4 / A100)
 !git clone https://github.com/liladhiee-web/Decentralized.git /content/gooys || (cd /content/gooys && git pull)
 %cd /content/gooys
-!pip install -q pydantic websockets aiohttp torch transformers psutil pynvml pillow
+!pip install -q pydantic websockets aiohttp torch transformers psutil pynvml pillow peft datasets
 
 import os
 os.environ["WORKER_ID"] = "${activeWorkerId}"
@@ -236,35 +370,51 @@ python -m worker.agent`,
 
   const totalWorkers = workers.length;
   const onlineWorkers = workers.filter((w) => w.status === "idle" || w.status === "busy").length;
-  const totalVramGB = workers.reduce(
-    (acc, w) => acc + (w.gpu_devices?.reduce((gAcc, g) => gAcc + g.total_vram_mb, 0) || 0),
-    0
-  ) / 1024;
+  const totalVramGB =
+    workers.reduce(
+      (acc, w) => acc + (w.gpu_devices?.reduce((gAcc, g) => gAcc + g.total_vram_mb, 0) || 0),
+      0
+    ) / 1024;
   const totalJobsDone = workers.reduce((acc, w) => acc + (w.total_jobs_completed || 0), 0);
 
+  // Active training job (first in list)
+  const activeTrainingJob = trainingJobs.find((j) => j.status === "running" || j.status === "pending") || trainingJobs[0];
+
   return (
-    <div className="max-w-7xl mx-auto space-y-8 pb-12">
+    <div className="max-w-7xl mx-auto space-y-8 pb-16">
       {/* Top Banner & Platform Stats */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-800 pb-6">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold text-white tracking-tight">Compute Workers & Node Management</h1>
+            <h1 className="text-2xl font-bold text-white tracking-tight">Compute Workers & Training Node Console</h1>
             <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20">
               Community Compute
             </span>
           </div>
           <p className="text-sm text-gray-400 mt-1">
-            Register your GPU nodes, obtain worker credentials, and contribute compute from Kaggle, Colab, or local GPUs.
+            Register your GPU nodes, train distributed model batches from Hugging Face, and earn provider rewards.
           </p>
         </div>
 
-        <button
-          onClick={fetchWorkers}
-          className="flex items-center gap-2 self-start md:self-auto px-3.5 py-2 rounded-lg bg-gray-800/80 hover:bg-gray-700 text-xs font-medium text-gray-300 hover:text-white transition-colors border border-gray-700/80 cursor-pointer"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 text-blue-400 ${loadingWorkers ? "animate-spin" : ""}`} />
-          <span>Refresh Nodes</span>
-        </button>
+        <div className="flex items-center gap-3">
+          <Link
+            href="/training"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-xs font-semibold text-black transition-all shadow-md"
+          >
+            <Flame className="w-3.5 h-3.5" />
+            <span>Launch New Distributed Training</span>
+          </Link>
+          <button
+            onClick={() => {
+              fetchWorkers();
+              fetchTrainingTasks();
+            }}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-gray-800/80 hover:bg-gray-700 text-xs font-medium text-gray-300 hover:text-white transition-colors border border-gray-700/80 cursor-pointer"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-blue-400 ${loadingWorkers ? "animate-spin" : ""}`} />
+            <span>Refresh</span>
+          </button>
+        </div>
       </div>
 
       {/* Aggregate Stats Cards */}
@@ -280,7 +430,7 @@ python -m worker.agent`,
           </div>
           <div className="mt-2 text-[11px] text-emerald-400 font-medium flex items-center gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-            Ready to accept inference tasks
+            Ready for inference & batch training
           </div>
         </div>
 
@@ -293,23 +443,21 @@ python -m worker.agent`,
             <span className="text-3xl font-bold font-mono text-white">{totalVramGB.toFixed(1)}</span>
             <span className="text-xs text-gray-500">GB Total</span>
           </div>
-          <div className="mt-2 text-[11px] text-gray-400">
-            High throughput tensor memory
-          </div>
+          <div className="mt-2 text-[11px] text-gray-400">High throughput tensor memory</div>
         </div>
 
         <div className="bg-[#111827]/80 border border-gray-800 rounded-xl p-5 shadow-lg">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Completed Tasks</span>
-            <Zap className="w-4 h-4 text-amber-400" />
+            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Trainable Batches</span>
+            <Layers className="w-4 h-4 text-amber-400" />
           </div>
           <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-3xl font-bold font-mono text-white">{totalJobsDone}</span>
-            <span className="text-xs text-gray-500">jobs processed</span>
+            <span className="text-3xl font-bold font-mono text-white">
+              {trainingJobs.reduce((acc, j) => acc + (j.batches?.filter((b) => b.status === "available").length || 0), 0)}
+            </span>
+            <span className="text-xs text-gray-500">batches waiting</span>
           </div>
-          <div className="mt-2 text-[11px] text-gray-400">
-            Across distributed worker fleet
-          </div>
+          <div className="mt-2 text-[11px] text-amber-400">Claimable by community nodes</div>
         </div>
 
         <div className="bg-[#111827]/80 border border-gray-800 rounded-xl p-5 shadow-lg">
@@ -321,14 +469,270 @@ python -m worker.agent`,
             <span className="text-3xl font-bold font-mono text-emerald-400">85%</span>
             <span className="text-xs text-gray-500">Revenue share</span>
           </div>
-          <div className="mt-2 text-[11px] text-gray-400">
-            Direct crypto / credit settlement
-          </div>
+          <div className="mt-2 text-[11px] text-gray-400">Direct settlement per trained batch</div>
         </div>
       </div>
 
-      {/* Main Two-Column Workflow Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+      {/* ========================================================================= */}
+      {/* 🔥 TASK BAR: LIVE DISTRIBUTED TRAINING PROGRESS ACROSS BATCHES             */}
+      {/* ========================================================================= */}
+      {activeTrainingJob && (
+        <div className="bg-gradient-to-r from-[#111827] via-[#1a1f33] to-[#111827] border border-amber-500/30 rounded-2xl p-6 shadow-2xl space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1">
+                  <Flame className="w-3 h-3 text-amber-400" />
+                  Live Distributed Training Task Bar
+                </span>
+                <span className="text-xs font-mono text-gray-400">Job: {activeTrainingJob.id.slice(0, 8)}...</span>
+              </div>
+              <h2 className="text-base font-bold text-white flex items-center gap-2">
+                <span>{activeTrainingJob.model_name}</span>
+                <span className="text-gray-500 font-normal">on</span>
+                <span className="text-teal-400">{activeTrainingJob.dataset_name}</span>
+              </h2>
+            </div>
+
+            <div className="text-right">
+              <div className="text-xs font-semibold text-white">
+                {activeTrainingJob.completed_batches} of {activeTrainingJob.num_batches} Batches Completed
+              </div>
+              <div className="text-sm font-bold font-mono text-amber-400">
+                {activeTrainingJob.progress_percent}% Aggregated
+              </div>
+            </div>
+          </div>
+
+          {/* Segmented Task Bar */}
+          <div className="space-y-2">
+            <div className="w-full bg-gray-900/80 rounded-full h-3.5 p-0.5 border border-gray-800 flex gap-1 overflow-hidden">
+              {activeTrainingJob.batches.map((b) => (
+                <div
+                  key={b.batch_id}
+                  title={`Batch ${b.batch_index}/${b.total_batches}: ${b.status.toUpperCase()}`}
+                  className={`h-full flex-1 rounded-sm transition-all duration-500 ${
+                    b.status === "completed"
+                      ? "bg-emerald-500 shadow-sm shadow-emerald-500/40"
+                      : b.status === "in_progress"
+                      ? "bg-amber-400 animate-pulse"
+                      : "bg-gray-800/80 hover:bg-gray-700"
+                  }`}
+                />
+              ))}
+            </div>
+
+            <div className="flex items-center justify-between text-[11px] text-gray-400">
+              <span className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500" /> Trained & Unified
+                <span className="w-2 h-2 rounded-full bg-amber-400 ml-2" /> In Progress
+                <span className="w-2 h-2 rounded-full bg-gray-700 ml-2" /> Waiting for Worker
+              </span>
+              <span>
+                {activeTrainingJob.completed_batches === activeTrainingJob.num_batches
+                  ? "✓ All batches joint together into unified model"
+                  : "Automatic weight aggregation triggers upon 100% completion"}
+              </span>
+            </div>
+          </div>
+
+          {/* Completed Aggregation Celebration Banner */}
+          {activeTrainingJob.completed_batches === activeTrainingJob.num_batches && activeTrainingJob.output_text && (
+            <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl space-y-2">
+              <div className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                <CheckCheck className="w-4 h-4 text-emerald-400" />
+                <span>Model Aggregation Complete: All Divided Batches Joint Together!</span>
+              </div>
+              <pre className="text-[11px] font-mono text-gray-200 whitespace-pre-wrap bg-black/40 p-3 rounded-lg border border-emerald-500/20">
+                {activeTrainingJob.output_text}
+              </pre>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 🚀 LIST OF AVAILABLE TRAINABLE TASKS (WORKER BATCH MARKETPLACE)           */}
+      {/* ========================================================================= */}
+      <div className="space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-800 pb-4">
+          <div>
+            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+              <Layers className="w-5 h-5 text-amber-400" />
+              Available Trainable Tasks & Batch Shards
+            </h2>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Workers can claim an available batch slice from the open Hugging Face dataset, train the adapter on their node, and earn credits.
+            </p>
+          </div>
+
+          {/* Connected Worker Node Selector for Claiming */}
+          {workers.length > 0 && (
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-gray-400">Execute with Node:</span>
+              <select
+                value={selectedWorkerId}
+                onChange={(e) => setSelectedWorkerId(e.target.value)}
+                className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-blue-500"
+              >
+                {workers.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name} ({w.status.toUpperCase()})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+
+        {/* Global Batch Action Message */}
+        {batchActionMsg && (
+          <div
+            className={`p-3.5 rounded-xl text-xs border ${
+              batchActionMsg.error
+                ? "bg-red-500/10 border-red-500/20 text-red-400"
+                : "bg-emerald-500/10 border-emerald-500/20 text-emerald-300"
+            }`}
+          >
+            {batchActionMsg.text}
+          </div>
+        )}
+
+        {/* Grid of Batch Task Cards */}
+        {trainingJobs.length === 0 || trainingJobs.every((j) => j.batches.length === 0) ? (
+          <div className="p-10 text-center bg-[#111827]/80 border border-gray-800 rounded-2xl space-y-3">
+            <Layers className="w-10 h-10 text-gray-600 mx-auto" />
+            <h3 className="text-sm font-semibold text-gray-300">No Distributed Training Tasks Currently Queued</h3>
+            <p className="text-xs text-gray-500 max-w-md mx-auto">
+              You can partition a new base model and dataset from Hugging Face into distributed batches using the Training Orchestrator.
+            </p>
+            <Link
+              href="/training"
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-black text-xs font-semibold rounded-lg shadow-md"
+            >
+              <Flame className="w-3.5 h-3.5" />
+              <span>Launch Training Job</span>
+            </Link>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {trainingJobs.flatMap((job) =>
+              job.batches.map((batch) => {
+                const isClaiming = claimingBatchId === batch.batch_id;
+                const isAvailable = batch.status === "available";
+                const isCompleted = batch.status === "completed";
+                const isInProgress = batch.status === "in_progress";
+
+                return (
+                  <div
+                    key={batch.batch_id}
+                    className={`bg-[#111827]/90 border rounded-2xl p-5 shadow-xl flex flex-col justify-between transition-all space-y-4 ${
+                      isCompleted
+                        ? "border-emerald-500/30"
+                        : isInProgress
+                        ? "border-amber-500/30"
+                        : "border-gray-800 hover:border-gray-700"
+                    }`}
+                  >
+                    <div className="space-y-3">
+                      {/* Top Badges */}
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-xs font-mono text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-lg">
+                          Batch {batch.batch_index} of {batch.total_batches}
+                        </span>
+                        <span
+                          className={`text-[10px] font-semibold px-2 py-0.5 rounded-full font-mono uppercase ${
+                            isCompleted
+                              ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                              : isInProgress
+                              ? "bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-pulse"
+                              : "bg-blue-500/10 text-blue-400 border border-blue-500/20"
+                          }`}
+                        >
+                          {batch.status}
+                        </span>
+                      </div>
+
+                      {/* Model & Dataset Details */}
+                      <div>
+                        <div className="text-[11px] text-gray-500 uppercase tracking-wider font-semibold">
+                          Base Model (Hugging Face)
+                        </div>
+                        <div className="text-sm font-bold text-white truncate">{batch.model_name}</div>
+                      </div>
+
+                      <div className="p-3 bg-gray-900/80 rounded-xl border border-gray-800/80 space-y-1.5 text-xs">
+                        <div className="flex items-center justify-between text-gray-300">
+                          <span className="text-gray-500">Dataset Slice:</span>
+                          <span className="font-mono text-teal-400 font-semibold">{batch.dataset_slice}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-gray-300">
+                          <span className="text-gray-500">Dataset Source:</span>
+                          <span className="font-mono text-gray-300 truncate max-w-[160px]">{batch.dataset_name}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-gray-300">
+                          <span className="text-gray-500">Bounty Reward:</span>
+                          <span className="font-mono text-emerald-400 font-bold">+{batch.reward_credits} Credits</span>
+                        </div>
+                        {batch.loss && (
+                          <div className="flex items-center justify-between text-gray-300">
+                            <span className="text-gray-500">Reported Loss:</span>
+                            <span className="font-mono text-amber-300 font-semibold">{batch.loss}</span>
+                          </div>
+                        )}
+                        {batch.worker_name && (
+                          <div className="flex items-center justify-between text-gray-300">
+                            <span className="text-gray-500">Trained By:</span>
+                            <span className="font-mono text-blue-400 font-semibold">{batch.worker_name}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="pt-2">
+                      {isAvailable && (
+                        <button
+                          type="button"
+                          onClick={() => handleClaimBatch(batch.batch_id)}
+                          disabled={isClaiming}
+                          className="w-full flex items-center justify-center gap-1.5 px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-black rounded-xl text-xs font-bold transition-all shadow-md shadow-amber-500/20 cursor-pointer disabled:opacity-50"
+                        >
+                          {isClaiming ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+                          <span>Claim & Train Batch on My Node</span>
+                        </button>
+                      )}
+
+                      {isInProgress && (
+                        <button
+                          type="button"
+                          onClick={() => handleCompleteBatch(batch.batch_id)}
+                          className="w-full flex items-center justify-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold transition-all shadow-md cursor-pointer"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          <span>Send Back Trained Weights (Complete)</span>
+                        </button>
+                      )}
+
+                      {isCompleted && (
+                        <div className="w-full py-2 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-xl text-xs font-semibold text-center flex items-center justify-center gap-1.5">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Batch Trained & Weights Reported</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ========================================================================= */}
+      {/* 1-CLICK WORKER TOKEN GENERATOR & SETUP SNIPPETS                           */}
+      {/* ========================================================================= */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 pt-4">
         {/* Left Column: Onboarding & Token Generator */}
         <div className="lg:col-span-6 space-y-6">
           <div className="bg-[#111827]/90 border border-gray-800 rounded-2xl p-6 shadow-xl space-y-6">
@@ -423,7 +827,6 @@ python -m worker.agent`,
                       <span className="text-[10px] text-gray-400 font-mono">{regData.name}</span>
                     </div>
 
-                    {/* WORKER_ID */}
                     <div className="space-y-1">
                       <div className="flex items-center justify-between text-[11px] text-gray-400">
                         <span>WORKER_ID:</span>
@@ -440,7 +843,6 @@ python -m worker.agent`,
                       </div>
                     </div>
 
-                    {/* WORKER_TOKEN */}
                     <div className="space-y-1">
                       <div className="flex items-center justify-between text-[11px] text-gray-400">
                         <span>WORKER_TOKEN:</span>
@@ -467,7 +869,6 @@ python -m worker.agent`,
                       </div>
                     </div>
 
-                    {/* WEBSOCKET_URL */}
                     <div className="space-y-1">
                       <div className="flex items-center justify-between text-[11px] text-gray-400">
                         <span>COORDINATOR_WS_URL:</span>
@@ -635,15 +1036,17 @@ python -m worker.agent`,
               <HelpCircle className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
               <div>
                 <span className="font-semibold text-white">How it works: </span>
-                The worker connects back to the coordinator over secure WebSockets with heartbeat telemetry (GPU VRAM, temperature, compute capability). Jobs are dispatched automatically without exposing open ports or requiring port forwarding!
+                The worker connects back to the coordinator over secure WebSockets with heartbeat telemetry (GPU VRAM, temperature, compute capability). Jobs and training batches are dispatched automatically without exposing open ports!
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Live Connected Workers Fleet Section */}
-      <div className="space-y-4">
+      {/* ========================================================================= */}
+      {/* 🖥️ LIVE CONNECTED COMPUTE NODES                                           */}
+      {/* ========================================================================= */}
+      <div className="space-y-4 pt-4">
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-lg font-bold text-white flex items-center gap-2">
@@ -695,7 +1098,7 @@ python -m worker.agent`,
                             : "bg-red-500/10 text-red-400 border border-red-500/20"
                         }`}
                       >
-                        <span className={`w-1.5 h-1.5 rounded-full ${isOnline ? "bg-emerald-400 animate-pulse" : "bg-red-400"}`}></span>
+                        <span className={`w-1.5 h-1.5 rounded-full ${isOnline ? "bg-emerald-400 animate-pulse" : "bg-red-400"}`} />
                         {worker.status.toUpperCase()}
                       </span>
                     </div>
@@ -727,7 +1130,7 @@ python -m worker.agent`,
                                 vramPercent > 85 ? "bg-red-500" : vramPercent > 60 ? "bg-amber-500" : "bg-blue-500"
                               }`}
                               style={{ width: `${vramPercent}%` }}
-                            ></div>
+                            />
                           </div>
                         </div>
 
@@ -779,4 +1182,3 @@ python -m worker.agent`,
     </div>
   );
 }
-
