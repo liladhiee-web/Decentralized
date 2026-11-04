@@ -91,6 +91,20 @@ class ArtifactClient:
         if not source_path.exists():
             raise FileNotFoundError(f"Source file {source_path} does not exist for upload")
 
+        from worker.config import get_worker_settings
+
+        worker_settings = get_worker_settings()
+        http_base = worker_settings.get_http_url()
+
+        # If upload_url is relative, prefix with coordinator's HTTP base
+        if upload_url.startswith("/"):
+            upload_url = f"{http_base.rstrip('/')}{upload_url}"
+        elif ("127.0.0.1" in upload_url or "localhost" in upload_url) and not (
+            "127.0.0.1" in http_base or "localhost" in http_base
+        ):
+            # Remote worker detected with localhost presigned URL: redirect through public coordinator tunnel!
+            upload_url = f"{http_base.rstrip('/')}/api/v1/jobs/artifacts/upload"
+
         total_bytes = source_path.stat().st_size
         hasher = hashlib.sha256()
 

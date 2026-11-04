@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -576,6 +576,46 @@ async def complete_training_batch(
             if all_completed
             else f"Batch {target_batch['batch_index']} recorded. Waiting for remaining batches."
         ),
+    }
+
+
+@router.put("/artifacts/upload")
+@router.post("/artifacts/upload")
+@router.put("/training/batches/{batch_id}/upload")
+@router.post("/training/batches/{batch_id}/upload")
+@router.put("/{job_id}/upload")
+@router.post("/{job_id}/upload")
+async def upload_job_artifact(
+    request: Request,
+    job_id: str | None = None,
+    batch_id: str | None = None,
+    job_param_id: str | None = Query(default=None, alias="job_id"),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Direct HTTP streaming artifact upload for remote workers when MinIO is local or offline."""
+    import hashlib
+    from pathlib import Path
+
+    target_id = job_id or job_param_id or batch_id or "shared"
+    storage_dir = Path("artifacts") / str(target_id)
+    storage_dir.mkdir(parents=True, exist_ok=True)
+    out_file = storage_dir / "output.safetensors"
+
+    hasher = hashlib.sha256()
+    total_bytes = 0
+    with open(out_file, "wb") as f:
+        async for chunk in request.stream():
+            if chunk:
+                f.write(chunk)
+                hasher.update(chunk)
+                total_bytes += len(chunk)
+
+    sha256_hex = hasher.hexdigest()
+    return {
+        "status": "uploaded",
+        "checksum_sha256": sha256_hex,
+        "size_bytes": total_bytes,
+        "filename": "output.safetensors",
     }
 
 

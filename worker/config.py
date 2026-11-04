@@ -43,6 +43,19 @@ class WorkerSettings(BaseSettings):
     DOCKER_NETWORK_MODE: str = Field(default="none")  # Strict network isolation for workloads
     SIMULATE_GPU: bool = Field(default=False)  # For test suites / CPU validation
 
+    def get_http_url(self) -> str:
+        """Derive base HTTP coordinator URL from configured WS or HTTP URL."""
+        if self.COORDINATOR_WS_URL:
+            ws = self.COORDINATOR_WS_URL
+            if "/ws" in ws:
+                ws = ws.split("/ws")[0]
+            if ws.startswith("wss://"):
+                return ws.replace("wss://", "https://")
+            elif ws.startswith("ws://"):
+                return ws.replace("ws://", "http://")
+            return ws
+        return self.COORDINATOR_URL.rstrip("/")
+
     def get_ws_url(self) -> str:
         """Derive WebSocket endpoint URL from HTTP coordinator URL if not explicitly configured."""
         if self.COORDINATOR_WS_URL:

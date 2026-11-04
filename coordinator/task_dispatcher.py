@@ -84,12 +84,18 @@ class TaskDispatcher:
             return False
 
         # Generate pre-signed PUT URL for worker to upload final output artifact
-        output_key = f"jobs/{job.id}/output.safetensors"
-        output_upload_url = self.storage.generate_presigned_upload_url(
-            bucket_name=settings.MINIO_BUCKET_ARTIFACTS,
-            object_name=output_key,
-            expiry_seconds=settings.MINIO_PRESIGNED_URL_EXPIRY_SECONDS,
-        )
+        if (
+            "127.0.0.1" in settings.MINIO_PUBLIC_ENDPOINT
+            or "localhost" in settings.MINIO_PUBLIC_ENDPOINT
+        ):
+            output_upload_url = f"/api/v1/jobs/{job.id}/upload"
+        else:
+            output_key = f"jobs/{job.id}/output.safetensors"
+            output_upload_url = self.storage.generate_presigned_upload_url(
+                bucket_name=settings.MINIO_BUCKET_ARTIFACTS,
+                object_name=output_key,
+                expiry_seconds=settings.MINIO_PRESIGNED_URL_EXPIRY_SECONDS,
+            )
 
         # Generate pre-signed GET URLs for any required model/dataset artifacts
         model_artifacts: list[ArtifactReference] = []
